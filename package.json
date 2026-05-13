@@ -1,0 +1,14 @@
+{
+  "name": "multichat",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "npm --prefix webui run build",
+    "dev": "npm --prefix webui run dev",
+    "lint": "npm --prefix webui run lint",
+    "start": "npm --prefix server start",
+    "test": "npm --prefix server test",
+    "install:all": "npm --prefix server install && npm --prefix webui install"
+  }
+}

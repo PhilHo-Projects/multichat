@@ -1,0 +1,74 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 0.5rem;
+  height: 0.5rem;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  border-radius: 9999px;
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background: rgb(113 113 122 / 0.62);
+  background-clip: content-box;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: rgb(161 161 170 / 0.82);
+  background-clip: content-box;
+}
+
+.scrollbar-thin::-webkit-scrollbar-button,
+.scrollbar-dark::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.scrollbar-dark {
+  scrollbar-color: rgb(113 113 122 / 0.62) transparent;
+  scrollbar-width: thin;
+}
+
+.scrollbar-dark::-webkit-scrollbar {
+  width: 0.55rem;
+  height: 0.55rem;
+}
+
+.scrollbar-dark::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-dark::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background: rgb(113 113 122 / 0.62);
+  background-clip: content-box;
+}
+
+.scrollbar-dark::-webkit-scrollbar-thumb:hover {
+  background: rgb(161 161 170 / 0.82);
+  background-clip: content-box;
+}
+
+.scrollbar-dark::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.animation-delay-200 {
+  animation-delay: 200ms;
+}
+
+.animation-delay-400 {
+  animation-delay: 400ms;
+}
+
+.overflow-wrap-anywhere {
+  overflow-wrap: anywhere;
+}
