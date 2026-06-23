@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import Chat from "./components/Chat";
+import LoginModal from "./components/LoginModal";
 import UsagePanel from "./components/UsagePanel";
 import ArrowRightIcon from "./components/icons/ArrowRightIcon";
 import ArrowUpIcon from "./components/icons/ArrowUpIcon";
@@ -9,8 +10,11 @@ import SidebarIcon from "./components/icons/SidebarIcon";
 import StopIcon from "./components/icons/StopIcon";
 import {
   fetchBootstrap,
+  fetchMe,
   fetchModels,
   fetchUsage,
+  login,
+  logout,
   streamChatResponse,
 } from "./lib/api";
 
@@ -652,6 +656,12 @@ function App() {
   const [isInitializing, setIsInitializing] = useState(true);
   const [isRefreshingModels, setIsRefreshingModels] = useState(false);
   const [bootstrap, setBootstrap] = useState(null);
+  const [authUser, setAuthUser] = useState(null);
+  const [authEnabled, setAuthEnabled] = useState(false);
+  const [guestMessagesUsed, setGuestMessagesUsed] = useState(0);
+  const [guestMessagesLimit, setGuestMessagesLimit] = useState(5);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [loginLimitReached, setLoginLimitReached] = useState(false);
   const [models, setModels] = useState([]);
   const [selectedModelId, setSelectedModelId] = useState("");
   const [systemPrompt, setSystemPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
@@ -889,9 +899,19 @@ function App() {
     setTopError(null);
 
     try {
-      const bootstrapData = await fetchBootstrap();
+      const [bootstrapData, meData] = await Promise.all([fetchBootstrap(), fetchMe()]);
+
       setBootstrap(bootstrapData);
       setSystemPrompt(DEFAULT_SYSTEM_PROMPT);
+
+      if (meData.authenticated) {
+        setAuthUser({ username: meData.username });
+      } else {
+        setAuthEnabled(meData.messagesLimit != null);
+        setGuestMessagesUsed(meData.messagesUsed || 0);
+        setGuestMessagesLimit(meData.messagesLimit ?? 5);
+      }
+
       void loadUsage({ bootstrapData, silent: true });
 
       const problem = createBootstrapProblem(bootstrapData);
@@ -911,6 +931,27 @@ function App() {
     } finally {
       setIsInitializing(false);
     }
+  }
+
+  async function handleLogin(username, password) {
+    const data = await login(username, password);
+    setAuthUser({ username: data.username });
+    setGuestMessagesUsed(0);
+    setShowLoginModal(false);
+    setLoginLimitReached(false);
+    setTopError(null);
+  }
+
+  async function handleLogout() {
+    try {
+      await logout();
+    } catch {
+      // ignore
+    }
+    setAuthUser(null);
+    const meData = await fetchMe();
+    setGuestMessagesUsed(meData.messagesUsed || 0);
+    setGuestMessagesLimit(meData.messagesLimit ?? 5);
   }
 
   async function loadModels(preferredModelId = selectedModelId) {
@@ -1251,6 +1292,9 @@ function App() {
               setLastRunSummary({
                 durationSeconds: (performance.now() - startedAt) / 1000,
               });
+              if (!authUser && authEnabled) {
+                setGuestMessagesUsed((prev) => prev + 1);
+              }
               void loadUsage({ silent: true });
               break;
 
@@ -1259,13 +1303,19 @@ function App() {
                 return;
               }
 
+              if (payload.details?.limitReached) {
+                setGuestMessagesUsed(payload.details.limit ?? guestMessagesLimit);
+                setLoginLimitReached(true);
+                setShowLoginModal(true);
+              }
+
               const quotaError = isQuotaError(payload);
 
               if (quotaError) {
                 void loadUsage({ silent: true });
               }
 
-              if (!quotaError) {
+              if (!quotaError && !payload.details?.limitReached) {
                 setTopError({
                   title: "Model request failed",
                   message: payload.message,
@@ -1506,6 +1556,21 @@ function App() {
 
         <div className="mt-3 border-t border-white/10" />
 
+        {authEnabled && !authUser && (
+          <div className="mt-2 flex items-center justify-between px-0.5">
+            <span className="text-xs text-zinc-500">
+              {Math.max(0, guestMessagesLimit - guestMessagesUsed)} guest message
+              {guestMessagesLimit - guestMessagesUsed !== 1 ? "s" : ""} remaining
+            </span>
+            <button
+              className="text-xs text-zinc-400 transition hover:text-zinc-200"
+              onClick={() => { setLoginLimitReached(false); setShowLoginModal(true); }}
+            >
+              Sign in for unlimited →
+            </button>
+          </div>
+        )}
+
         <div className="mt-2 flex items-center gap-2">
           <div className="relative" ref={attachmentMenuRef}>
             <button
@@ -1616,14 +1681,37 @@ function App() {
             {selectedModel?.displayName || ""}
           </div>
 
-          <button
-            className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-[#1d1d1d]/90 text-zinc-300 shadow-[0_12px_32px_rgba(0,0,0,0.28)] backdrop-blur transition hover:bg-[#252525]"
-            onClick={openSettingsModal}
-            aria-label="Open settings"
-            title="Open settings"
-          >
-            <GearIcon className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            {authEnabled && (
+              authUser ? (
+                <div className="flex items-center gap-2 rounded-full border border-white/10 bg-[#1d1d1d]/90 px-3 py-1.5 shadow-[0_12px_32px_rgba(0,0,0,0.28)] backdrop-blur">
+                  <span className="text-xs text-zinc-400">{authUser.username}</span>
+                  <button
+                    className="text-xs text-zinc-500 transition hover:text-zinc-300"
+                    onClick={handleLogout}
+                    title="Sign out"
+                  >
+                    Sign out
+                  </button>
+                </div>
+              ) : (
+                <button
+                  className="rounded-full border border-white/10 bg-[#1d1d1d]/90 px-3 py-1.5 text-xs text-zinc-300 shadow-[0_12px_32px_rgba(0,0,0,0.28)] backdrop-blur transition hover:bg-[#252525]"
+                  onClick={() => { setLoginLimitReached(false); setShowLoginModal(true); }}
+                >
+                  Sign in
+                </button>
+              )
+            )}
+            <button
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-[#1d1d1d]/90 text-zinc-300 shadow-[0_12px_32px_rgba(0,0,0,0.28)] backdrop-blur transition hover:bg-[#252525]"
+              onClick={openSettingsModal}
+              aria-label="Open settings"
+              title="Open settings"
+            >
+              <GearIcon className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </header>
 
@@ -1995,6 +2083,14 @@ function App() {
           </>
         )}
       </main>
+      {showLoginModal && (
+        <LoginModal
+          onLogin={handleLogin}
+          onClose={() => { if (!loginLimitReached) setShowLoginModal(false); }}
+          limitReached={loginLimitReached}
+          messagesLimit={guestMessagesLimit}
+        />
+      )}
     </div>
   );
 }

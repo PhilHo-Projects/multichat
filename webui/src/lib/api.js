@@ -39,6 +39,22 @@ export function fetchUsage() {
   return fetchJson(apiPath("/api/usage"));
 }
 
+export function fetchMe() {
+  return fetchJson(apiPath("/api/me"));
+}
+
+export function login(username, password) {
+  return fetchJson(apiPath("/api/login"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+}
+
+export function logout() {
+  return fetchJson(apiPath("/api/logout"), { method: "POST" });
+}
+
 export async function streamChatResponse({
   provider,
   modelId,

@@ -1,4 +1,5 @@
 import express from "express";
+import session from "express-session";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -18,18 +19,79 @@ import {
 import { sendSseEvent, streamGoogleSse } from "./sse.js";
 import { streamNvidiaSse } from "./nvidia.js";
 import { fetchQuotaDashboard } from "./usage.js";
+import { verifyCredentials, isAuthEnabled, getPublicMessageLimit } from "./auth.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const WEBUI_DIST_PATH = path.resolve(__dirname, "../../webui/dist");
-const HOST = "127.0.0.1";
+const HOST = process.env.HOST || "127.0.0.1";
 const PORT = Number(process.env.PORT || 8787);
 const APP_BASE_PATH = normalizeAppBasePath(process.env.APP_BASE_PATH);
 
 const app = express();
 const router = express.Router();
 app.disable("x-powered-by");
+app.set("trust proxy", 1);
 app.use(express.json({ limit: "1mb" }));
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || "dev-secret-change-in-production",
+    resave: false,
+    saveUninitialized: true,
+    cookie: {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 24 * 60 * 60 * 1000,
+    },
+  })
+);
+
+router.get("/api/me", (request, response) => {
+  if (request.session.user) {
+    response.json({ authenticated: true, username: request.session.user.username });
+    return;
+  }
+
+  const limit = getPublicMessageLimit();
+  const used = request.session.messageCount || 0;
+  response.json({
+    authenticated: false,
+    messagesUsed: used,
+    messagesLimit: isAuthEnabled() ? limit : null,
+    messagesRemaining: isAuthEnabled() ? Math.max(0, limit - used) : null,
+  });
+});
+
+router.post("/api/login", async (request, response) => {
+  const { username, password } = request.body || {};
+
+  if (!username || !password) {
+    response.status(400).json({ message: "Username and password required." });
+    return;
+  }
+
+  if (!isAuthEnabled()) {
+    response.status(503).json({ message: "Auth is not configured on this server." });
+    return;
+  }
+
+  const valid = await verifyCredentials(username, password);
+  if (!valid) {
+    response.status(401).json({ message: "Invalid username or password." });
+    return;
+  }
+
+  request.session.user = { username };
+  request.session.messageCount = 0;
+  response.json({ authenticated: true, username });
+});
+
+router.post("/api/logout", (request, response) => {
+  request.session.destroy(() => {
+    response.json({ success: true });
+  });
+});
 
 router.get("/api/bootstrap", async (_request, response) => {
   try {
@@ -134,6 +196,30 @@ router.get("/api/usage", async (_request, response) => {
 });
 
 router.post("/api/chat/stream", async (request, response) => {
+  if (!request.session.user && isAuthEnabled()) {
+    const limit = getPublicMessageLimit();
+    const used = request.session.messageCount || 0;
+
+    if (used >= limit) {
+      response.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+      response.setHeader("Cache-Control", "no-cache, no-transform");
+      response.setHeader("Connection", "keep-alive");
+      response.flushHeaders?.();
+      sendSseEvent(response, "error", {
+        httpCode: 429,
+        googleStatus: null,
+        message: `You've used all ${limit} guest messages. Sign in for unlimited access.`,
+        modelId: null,
+        provider: null,
+        details: { limitReached: true, limit },
+      });
+      response.end();
+      return;
+    }
+
+    request.session.messageCount = used + 1;
+  }
+
   const upstreamAbortController = new AbortController();
   request.on("aborted", () => {
     upstreamAbortController.abort();
