@@ -1303,7 +1303,12 @@ function App() {
                 return;
               }
 
-              if (payload.details?.limitReached) {
+              if (payload.details?.dailyLimitReached) {
+                setTopError({
+                  title: "Daily guest limit reached",
+                  message: payload.message,
+                });
+              } else if (payload.details?.limitReached) {
                 setGuestMessagesUsed(payload.details.limit ?? guestMessagesLimit);
                 setLoginLimitReached(true);
                 setShowLoginModal(true);

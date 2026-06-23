@@ -19,7 +19,13 @@ import {
 import { sendSseEvent, streamGoogleSse } from "./sse.js";
 import { streamNvidiaSse } from "./nvidia.js";
 import { fetchQuotaDashboard } from "./usage.js";
-import { verifyCredentials, isAuthEnabled, getPublicMessageLimit } from "./auth.js";
+import {
+  verifyCredentials,
+  isAuthEnabled,
+  getPublicMessageLimit,
+  getDailyLimitStatus,
+  consumeDailyMessage,
+} from "./auth.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -53,13 +59,17 @@ router.get("/api/me", (request, response) => {
     return;
   }
 
-  const limit = getPublicMessageLimit();
-  const used = request.session.messageCount || 0;
+  const sessionLimit = getPublicMessageLimit();
+  const sessionUsed = request.session.messageCount || 0;
+  const daily = getDailyLimitStatus();
   response.json({
     authenticated: false,
-    messagesUsed: used,
-    messagesLimit: isAuthEnabled() ? limit : null,
-    messagesRemaining: isAuthEnabled() ? Math.max(0, limit - used) : null,
+    messagesUsed: sessionUsed,
+    messagesLimit: isAuthEnabled() ? sessionLimit : null,
+    messagesRemaining: isAuthEnabled() ? Math.max(0, sessionLimit - sessionUsed) : null,
+    dailyUsed: isAuthEnabled() ? daily.used : null,
+    dailyLimit: isAuthEnabled() ? daily.limit : null,
+    dailyRemaining: isAuthEnabled() ? Math.max(0, daily.limit - daily.used) : null,
   });
 });
 
@@ -197,10 +207,10 @@ router.get("/api/usage", async (_request, response) => {
 
 router.post("/api/chat/stream", async (request, response) => {
   if (!request.session.user && isAuthEnabled()) {
-    const limit = getPublicMessageLimit();
-    const used = request.session.messageCount || 0;
+    const sessionLimit = getPublicMessageLimit();
+    const sessionUsed = request.session.messageCount || 0;
 
-    if (used >= limit) {
+    if (sessionUsed >= sessionLimit) {
       response.setHeader("Content-Type", "text/event-stream; charset=utf-8");
       response.setHeader("Cache-Control", "no-cache, no-transform");
       response.setHeader("Connection", "keep-alive");
@@ -208,16 +218,35 @@ router.post("/api/chat/stream", async (request, response) => {
       sendSseEvent(response, "error", {
         httpCode: 429,
         googleStatus: null,
-        message: `You've used all ${limit} guest messages. Sign in for unlimited access.`,
+        message: `You've used all ${sessionLimit} guest messages. Sign in for unlimited access.`,
         modelId: null,
         provider: null,
-        details: { limitReached: true, limit },
+        details: { limitReached: true, limit: sessionLimit },
       });
       response.end();
       return;
     }
 
-    request.session.messageCount = used + 1;
+    const dailyOk = consumeDailyMessage();
+    if (!dailyOk) {
+      const daily = getDailyLimitStatus();
+      response.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+      response.setHeader("Cache-Control", "no-cache, no-transform");
+      response.setHeader("Connection", "keep-alive");
+      response.flushHeaders?.();
+      sendSseEvent(response, "error", {
+        httpCode: 429,
+        googleStatus: null,
+        message: `Today's public message budget (${daily.limit}) is used up. Come back tomorrow!`,
+        modelId: null,
+        provider: null,
+        details: { dailyLimitReached: true, limit: daily.limit },
+      });
+      response.end();
+      return;
+    }
+
+    request.session.messageCount = sessionUsed + 1;
   }
 
   const upstreamAbortController = new AbortController();
