@@ -4,7 +4,6 @@ import DOMPurify from "dompurify";
 import { useEffect } from "react";
 
 import BotIcon from "./icons/BotIcon";
-import UserIcon from "./icons/UserIcon";
 import "../styles/Chat.css";
 
 function render(text) {
@@ -122,36 +121,33 @@ export default function Chat({ messages }) {
                 </div>
               </>
             ) : msg.role === "user" ? (
-              <>
-                <UserIcon className="mt-2 h-6 w-6 min-h-6 min-w-6 text-zinc-500" />
-                <div className="ml-auto max-w-[78ch] rounded-[24px] border border-white/10 bg-[#2a2a2a] p-4 text-zinc-100">
-                  {joinTextParts(msg.parts).length > 0 && (
-                    <p className="min-h-6 overflow-wrap-anywhere">
-                      {joinTextParts(msg.parts)}
-                    </p>
-                  )}
-                  {getAttachmentParts(msg.parts).length > 0 && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {getAttachmentParts(msg.parts).map((attachment) => (
-                        <div
-                          key={attachment.id || `${attachment.name}-${attachment.size}`}
-                          className="flex max-w-full items-center gap-2 rounded-2xl border border-white/10 bg-black/20 px-3 py-2"
-                        >
-                          <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-zinc-400">
-                            {attachmentKindLabel(attachment.kind)}
-                          </span>
-                          <div className="min-w-0">
-                            <p className="truncate text-sm text-zinc-100">{attachment.name}</p>
-                            <p className="text-xs text-zinc-500">
-                              {formatBytes(attachment.size)}
-                            </p>
-                          </div>
+              <div className="ml-auto max-w-[78ch] rounded-[24px] border border-white/10 bg-[#2a2a2a] p-4 text-zinc-100">
+                {joinTextParts(msg.parts).length > 0 && (
+                  <p className="min-h-6 overflow-wrap-anywhere">
+                    {joinTextParts(msg.parts)}
+                  </p>
+                )}
+                {getAttachmentParts(msg.parts).length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {getAttachmentParts(msg.parts).map((attachment) => (
+                      <div
+                        key={attachment.id || `${attachment.name}-${attachment.size}`}
+                        className="flex max-w-full items-center gap-2 rounded-2xl border border-white/10 bg-black/20 px-3 py-2"
+                      >
+                        <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-zinc-400">
+                          {attachmentKindLabel(attachment.kind)}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm text-zinc-100">{attachment.name}</p>
+                          <p className="text-xs text-zinc-500">
+                            {formatBytes(attachment.size)}
+                          </p>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             ) : (
               <div
                 className={`rounded-[22px] border px-4 py-3 text-sm ${

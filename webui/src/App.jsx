@@ -1545,7 +1545,7 @@ function App() {
                   onClick={() => removePendingAttachment(attachment.id)}
                   aria-label={`Remove ${attachment.name}`}
                 >
-                  x
+                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
                 </button>
               </div>
             ))}
@@ -1590,11 +1590,10 @@ function App() {
                   <button
                     key={picker.id}
                     type="button"
-                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm text-zinc-200 transition hover:bg-white/5"
+                    className="flex w-full items-center rounded-xl px-3 py-2.5 text-left text-sm text-zinc-200 transition hover:bg-white/5"
                     onClick={() => triggerFilePicker(picker.id)}
                   >
-                    <span className="text-zinc-500">+</span>
-                    <span>{picker.label}</span>
+                    {picker.label}
                   </button>
                 ))}
               </div>
@@ -1677,9 +1676,15 @@ function App() {
             <SidebarIcon className="h-4 w-4" />
           </button>
 
-          <div className="pointer-events-none hidden text-sm text-zinc-500 sm:block">
-            {selectedModel?.displayName || ""}
-          </div>
+          {selectedModel?.displayName && (
+            <button
+              className="hidden text-sm text-zinc-500 transition hover:text-zinc-300 sm:block"
+              onClick={openModelSettings}
+              title="Change model"
+            >
+              {selectedModel.displayName}
+            </button>
+          )}
 
           <div className="flex items-center gap-2">
             {authEnabled && (
@@ -2004,33 +2009,16 @@ function App() {
               selectedModelId={selectedModelId}
             />
 
-            <section className="mt-4 rounded-3xl border border-white/10 bg-white/[0.03] p-4 text-sm text-zinc-400">
-              <div className="flex flex-wrap gap-2">
-                {usage?.promptTokenCount != null && (
-                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
-                    prompt {formatNumber(usage.promptTokenCount)}
-                  </span>
-                )}
-                {usage?.candidatesTokenCount != null && (
-                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
-                    output {formatNumber(usage.candidatesTokenCount)}
-                  </span>
-                )}
-                {usage?.totalTokenCount != null && (
-                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
-                    total {formatNumber(usage.totalTokenCount)}
-                  </span>
-                )}
-              </div>
-              {messages.length > 0 && (
+            {messages.length > 0 && (
+              <section className="mt-4 rounded-3xl border border-white/10 bg-white/[0.03] p-4 text-sm text-zinc-400">
                 <button
-                  className="mt-4 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-zinc-300 hover:bg-white/10"
+                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-zinc-300 hover:bg-white/10"
                   onClick={resetConversation}
                 >
                   Reset conversation
                 </button>
-              )}
-            </section>
+              </section>
+            )}
           </aside>
         </div>
       )}
