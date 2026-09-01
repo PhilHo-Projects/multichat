@@ -147,15 +147,6 @@ export function parseDotEnv(rawValue) {
   return parsedEnv;
 }
 
-export function normalizeAppBasePath(value) {
-  const normalizedValue = String(value ?? "").trim();
-  if (!normalizedValue || normalizedValue === "/") {
-    return "";
-  }
-
-  return `/${normalizedValue.replace(/^\/+|\/+$/g, "")}`;
-}
-
 export function buildBootstrapPayload(config, status = {}) {
   const googleStatus = status.google ?? status ?? {};
   const nvidiaStatus = status.nvidia ?? {};

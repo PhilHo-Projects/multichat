@@ -7,7 +7,6 @@ module.exports = {
       env: {
         NODE_ENV: "production",
         PORT: "8791",
-        APP_BASE_PATH: "/philchat",
       },
     },
   ],

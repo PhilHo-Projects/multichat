@@ -45,8 +45,6 @@ jobs:
 
       - name: Build web UI
         run: npm run build
-        env:
-          VITE_BASE_PATH: /philchat/
 
       - name: Load SSH key
         uses: webfactory/ssh-agent@v0.9.0
