@@ -3204,6 +3204,35 @@ EOF
 
 ## Task 12: Cutover
 
+> **Amended during execution.** This task was planned around the existing GitHub Actions
+> deploy. That deploy turned out to have been broken since the Hetzner migration -
+> `SERVER_HOST` resolves to a host that is not the box, so every push had been failing at
+> `ssh-keyscan` and the running container had been placed by hand. Rather than repair a
+> pipeline needing standing SSH access to the server, philchat moved to **Coolify**,
+> matching the other apps on the box.
+>
+> What shipped instead of steps 2-4 below:
+>
+> - Coolify application `philchat` (`ciyrvfog75gpwtdizox0ydlh`), public repo, `main`,
+>   Dockerfile build pack, port 8791, domain `https://chat.philippeho.dev`
+> - Persistent storage `type: "persistent"`, `/home/phil/app-data/philchat` -> `/data`,
+>   matching personal-soundcloud
+> - 17 environment variables set through the Coolify API; Coolify's automatic preview
+>   duplicates were deleted so each secret exists once
+> - The `Dockerfile` became multi-stage so it builds the web UI itself - `webui/dist` is
+>   gitignored, so a build from a clean clone would otherwise ship an empty UI. It needs
+>   `npm ci --include=dev`, because Coolify passes env vars through as build args and
+>   `NODE_ENV=production` would otherwise skip vite.
+> - `.github/workflows/deploy.yml` became `ci.yml`: tests, lint and an image build, no
+>   deploy and no SSH. `docker-compose.yml` and `ecosystem.config.cjs` were deleted, having
+>   described the manual stack and PM2 respectively.
+> - The manual stack was retired to `/opt/philchat.retired-20260901` rather than deleted,
+>   and the manual Traefik router removed. `philchat-redirect.yaml` stays - Coolify does
+>   not generate the legacy 301.
+>
+> Steps 1 and 5-7 below still applied. Releases are manual: a push to `main` runs CI but
+> does not deploy.
+
 **Files:**
 - Modify: `.env.example`, `README.md`
 - Modify (on the server, manually): `/opt/philchat/docker-compose.yml`, `/opt/philchat/.env`
