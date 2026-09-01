@@ -3,7 +3,9 @@
 FROM node:24-alpine AS webui
 WORKDIR /app/webui
 COPY webui/package.json webui/package-lock.json ./
-RUN npm ci
+# --include=dev explicitly: the build platform injects NODE_ENV=production as a build
+# arg, which would make npm ci skip devDependencies and leave vite missing.
+RUN npm ci --include=dev
 COPY webui/ ./
 RUN npm run build
 
