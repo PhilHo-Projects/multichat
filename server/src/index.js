@@ -13,6 +13,13 @@ import {
   loadRuntimeConfig,
 } from "./config.js";
 import { openDatabase } from "./database.js";
+import {
+  consumeGuestMessage,
+  isModelAllowedForGuests,
+  peekGuest,
+  resolveGuest,
+  summarizeGuestAllowance,
+} from "./guests.js";
 import { ensureOwner } from "./owner.js";
 import {
   fetchProviderModels,
@@ -138,13 +145,10 @@ export function createApp({ database, auth, config }) {
       return;
     }
 
+    const guest = peekGuest({ request, config });
     response.json({
       authenticated: false,
-      guest: {
-        messagesUsed: 0,
-        messagesLimit: config.guestMessageLimit,
-        messagesRemaining: config.guestMessageLimit,
-      },
+      guest: summarizeGuestAllowance({ database, config, guest }),
     });
   });
 
@@ -257,6 +261,48 @@ export function createApp({ database, auth, config }) {
   });
 
   router.post("/api/chat/stream", async (request, response) => {
+    let guest = null;
+
+    if (!request.authUser) {
+      guest = resolveGuest({ request, response, config });
+
+      if (!isModelAllowedForGuests(request.body?.modelId, config)) {
+        beginSseResponse(response);
+        sendSseEvent(response, "error", {
+          httpCode: 403,
+          googleStatus: null,
+          message: "That model is not available without an account. Sign in to use it.",
+          modelId: request.body?.modelId ?? null,
+          provider: null,
+          details: { modelNotAllowed: true },
+        });
+        response.end();
+        return;
+      }
+
+      const spend = consumeGuestMessage({ database, config, guest });
+
+      if (!spend.ok) {
+        beginSseResponse(response);
+        sendSseEvent(response, "error", {
+          httpCode: 429,
+          googleStatus: null,
+          message:
+            spend.reason === "guest"
+              ? `You've used all ${config.guestMessageLimit} guest messages. Create an account to keep going.`
+              : "Today's public message budget is used up. Come back tomorrow.",
+          modelId: request.body?.modelId ?? null,
+          provider: null,
+          details:
+            spend.reason === "guest"
+              ? { limitReached: true, limit: config.guestMessageLimit }
+              : { dailyLimitReached: true, limit: config.guestDailyMessageLimit },
+        });
+        response.end();
+        return;
+      }
+    }
+
     const upstreamAbortController = new AbortController();
     request.on("aborted", () => {
       upstreamAbortController.abort();
