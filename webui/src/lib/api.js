@@ -43,16 +43,22 @@ export function fetchMe() {
   return fetchJson(apiPath("/api/me"));
 }
 
-export function login(username, password) {
-  return fetchJson(apiPath("/api/login"), {
+export function fetchAdminUsers(status = "pending") {
+  return fetchJson(apiPath(`/api/admin/users?status=${status}`));
+}
+
+export function setUserApproval(id, approved) {
+  return fetchJson(apiPath(`/api/admin/users/${id}/${approved ? "approve" : "reject"}`), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password }),
   });
 }
 
-export function logout() {
-  return fetchJson(apiPath("/api/logout"), { method: "POST" });
+export function setUserBudget(id, monthlyTokenBudget) {
+  return fetchJson(apiPath(`/api/admin/users/${id}/budget`), {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ monthlyTokenBudget }),
+  });
 }
 
 export async function streamChatResponse({

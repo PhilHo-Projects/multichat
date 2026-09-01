@@ -162,7 +162,12 @@ export function createApp({ database, auth, config }) {
     try {
       const runtimeConfig = await loadRuntimeConfig();
       const providerStatus = await verifyProviderConnections(runtimeConfig);
-      response.json(buildBootstrapPayload(runtimeConfig, providerStatus));
+      response.json({
+        ...buildBootstrapPayload(runtimeConfig, providerStatus),
+        // Public on purpose: a list of permitted model ids is not sensitive, and the UI
+        // needs it to avoid offering a guest a model the server will refuse.
+        guestModelAllowlist: config.guestModelAllowlist,
+      });
     } catch (error) {
       const normalizedError = toClientError(error);
       const providerError = {
