@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 
 import Chat from "./components/Chat";
-import LoginModal from "./components/LoginModal";
+import { authClient } from "./lib/authClient";
+import AdminPanel from "./components/AdminPanel";
+import AuthModal from "./components/AuthModal";
 import UsagePanel from "./components/UsagePanel";
 import ArrowRightIcon from "./components/icons/ArrowRightIcon";
 import ArrowUpIcon from "./components/icons/ArrowUpIcon";
@@ -13,8 +15,6 @@ import {
   fetchMe,
   fetchModels,
   fetchUsage,
-  login,
-  logout,
   streamChatResponse,
 } from "./lib/api";
 
@@ -657,11 +657,12 @@ function App() {
   const [isRefreshingModels, setIsRefreshingModels] = useState(false);
   const [bootstrap, setBootstrap] = useState(null);
   const [authUser, setAuthUser] = useState(null);
-  const [authEnabled, setAuthEnabled] = useState(false);
-  const [guestMessagesUsed, setGuestMessagesUsed] = useState(0);
-  const [guestMessagesLimit, setGuestMessagesLimit] = useState(5);
-  const [showLoginModal, setShowLoginModal] = useState(false);
-  const [loginLimitReached, setLoginLimitReached] = useState(false);
+  const [guestAllowance, setGuestAllowance] = useState(null);
+  const [userUsage, setUserUsage] = useState(null);
+  const [pendingUserCount, setPendingUserCount] = useState(0);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(false);
+  const [authNotice, setAuthNotice] = useState(null);
   const [models, setModels] = useState([]);
   const [selectedModelId, setSelectedModelId] = useState("");
   const [systemPrompt, setSystemPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
@@ -686,7 +687,14 @@ function App() {
   const [composerDockHeight, setComposerDockHeight] = useState(280);
 
   const selectedModel = findSelectedModel(models, selectedModelId);
-  const filteredModels = models.filter((model) =>
+  // Guests only see what the server would actually let them run. The server-side refusal
+  // stays as the backstop; this just avoids offering a dead end.
+  const guestModelAllowlist = bootstrap?.guestModelAllowlist ?? [];
+  const availableModels =
+    authUser || guestModelAllowlist.length === 0
+      ? models
+      : models.filter((model) => guestModelAllowlist.includes(model.id));
+  const filteredModels = availableModels.filter((model) =>
     matchesModelQuery(model, modelSearchQuery)
   );
   const filteredModelGroups = groupModelsByProvider(filteredModels);
@@ -904,13 +912,7 @@ function App() {
       setBootstrap(bootstrapData);
       setSystemPrompt(DEFAULT_SYSTEM_PROMPT);
 
-      if (meData.authenticated) {
-        setAuthUser({ username: meData.username });
-      } else {
-        setAuthEnabled(meData.messagesLimit != null);
-        setGuestMessagesUsed(meData.messagesUsed || 0);
-        setGuestMessagesLimit(meData.messagesLimit ?? 5);
-      }
+      applyMe(meData);
 
       void loadUsage({ bootstrapData, silent: true });
 
@@ -933,25 +935,35 @@ function App() {
     }
   }
 
-  async function handleLogin(username, password) {
-    const data = await login(username, password);
-    setAuthUser({ username: data.username });
-    setGuestMessagesUsed(0);
-    setShowLoginModal(false);
-    setLoginLimitReached(false);
+  function applyMe(meData) {
+    if (meData.authenticated) {
+      setAuthUser(meData.user);
+      setUserUsage(meData.usage ?? null);
+      setPendingUserCount(meData.pendingUserCount ?? 0);
+      setGuestAllowance(null);
+      return;
+    }
+
+    setAuthUser(null);
+    setUserUsage(null);
+    setPendingUserCount(0);
+    setGuestAllowance(meData.guest ?? null);
+  }
+
+  async function handleSignedIn() {
+    setShowAuthModal(false);
+    setAuthNotice(null);
     setTopError(null);
+    applyMe(await fetchMe());
   }
 
   async function handleLogout() {
     try {
-      await logout();
+      await authClient.signOut();
     } catch {
       // ignore
     }
-    setAuthUser(null);
-    const meData = await fetchMe();
-    setGuestMessagesUsed(meData.messagesUsed || 0);
-    setGuestMessagesLimit(meData.messagesLimit ?? 5);
+    applyMe(await fetchMe());
   }
 
   async function loadModels(preferredModelId = selectedModelId) {
@@ -1292,8 +1304,16 @@ function App() {
               setLastRunSummary({
                 durationSeconds: (performance.now() - startedAt) / 1000,
               });
-              if (!authUser && authEnabled) {
-                setGuestMessagesUsed((prev) => prev + 1);
+              if (!authUser) {
+                setGuestAllowance((previous) =>
+                  previous
+                    ? {
+                        ...previous,
+                        messagesUsed: previous.messagesUsed + 1,
+                        messagesRemaining: Math.max(0, previous.messagesRemaining - 1),
+                      }
+                    : previous
+                );
               }
               void loadUsage({ silent: true });
               break;
@@ -1309,9 +1329,19 @@ function App() {
                   message: payload.message,
                 });
               } else if (payload.details?.limitReached) {
-                setGuestMessagesUsed(payload.details.limit ?? guestMessagesLimit);
-                setLoginLimitReached(true);
-                setShowLoginModal(true);
+                setAuthNotice("guestLimit");
+                setShowAuthModal(true);
+              } else if (payload.details?.budgetExhausted) {
+                // A site-wide ceiling is not something signing in fixes.
+                if (payload.details.scope === "user") {
+                  setAuthNotice("budget");
+                  setShowAuthModal(true);
+                } else {
+                  setTopError({ title: "Daily limit reached", message: payload.message });
+                }
+              } else if (payload.details?.modelNotAllowed) {
+                setAuthNotice("guestLimit");
+                setShowAuthModal(true);
               }
 
               const quotaError = isQuotaError(payload);
@@ -1561,18 +1591,25 @@ function App() {
 
         <div className="mt-3 border-t border-white/10" />
 
-        {authEnabled && !authUser && (
+        {guestAllowance && (
           <div className="mt-2 flex items-center justify-between px-0.5">
             <span className="text-xs text-zinc-500">
-              {Math.max(0, guestMessagesLimit - guestMessagesUsed)} guest message
-              {guestMessagesLimit - guestMessagesUsed !== 1 ? "s" : ""} remaining
+              {guestAllowance.messagesRemaining} guest message
+              {guestAllowance.messagesRemaining !== 1 ? "s" : ""} remaining
             </span>
             <button
               className="text-xs text-zinc-400 transition hover:text-zinc-200"
-              onClick={() => { setLoginLimitReached(false); setShowLoginModal(true); }}
+              onClick={() => { setAuthNotice(null); setShowAuthModal(true); }}
             >
-              Sign in for unlimited →
+              Create an account →
             </button>
+          </div>
+        )}
+
+        {userUsage && (
+          <div className="mt-2 px-0.5 text-xs text-zinc-500">
+            {userUsage.tokensRemaining.toLocaleString()} of{" "}
+            {userUsage.tokenBudget.toLocaleString()} tokens left this month
           </div>
         )}
 
@@ -1692,26 +1729,33 @@ function App() {
           )}
 
           <div className="flex items-center gap-2">
-            {authEnabled && (
-              authUser ? (
-                <div className="flex items-center gap-2 rounded-full border border-white/10 bg-[#1d1d1d]/90 px-3 py-1.5 shadow-[0_12px_32px_rgba(0,0,0,0.28)] backdrop-blur">
-                  <span className="text-xs text-zinc-400">{authUser.username}</span>
+            {authUser ? (
+              <div className="flex items-center gap-2 rounded-full border border-white/10 bg-[#1d1d1d]/90 px-3 py-1.5 shadow-[0_12px_32px_rgba(0,0,0,0.28)] backdrop-blur">
+                <span className="text-xs text-zinc-400">{authUser.username}</span>
+                {authUser.role === "owner" && (
                   <button
                     className="text-xs text-zinc-500 transition hover:text-zinc-300"
-                    onClick={handleLogout}
-                    title="Sign out"
+                    onClick={() => setShowAdmin(true)}
+                    title="Manage accounts"
                   >
-                    Sign out
+                    Accounts{pendingUserCount > 0 ? ` (${pendingUserCount})` : ""}
                   </button>
-                </div>
-              ) : (
+                )}
                 <button
-                  className="rounded-full border border-white/10 bg-[#1d1d1d]/90 px-3 py-1.5 text-xs text-zinc-300 shadow-[0_12px_32px_rgba(0,0,0,0.28)] backdrop-blur transition hover:bg-[#252525]"
-                  onClick={() => { setLoginLimitReached(false); setShowLoginModal(true); }}
+                  className="text-xs text-zinc-500 transition hover:text-zinc-300"
+                  onClick={handleLogout}
+                  title="Sign out"
                 >
-                  Sign in
+                  Sign out
                 </button>
-              )
+              </div>
+            ) : (
+              <button
+                className="rounded-full border border-white/10 bg-[#1d1d1d]/90 px-3 py-1.5 text-xs text-zinc-300 shadow-[0_12px_32px_rgba(0,0,0,0.28)] backdrop-blur transition hover:bg-[#252525]"
+                onClick={() => { setAuthNotice(null); setShowAuthModal(true); }}
+              >
+                Sign in
+              </button>
             )}
             <button
               className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-[#1d1d1d]/90 text-zinc-300 shadow-[0_12px_32px_rgba(0,0,0,0.28)] backdrop-blur transition hover:bg-[#252525]"
@@ -2076,13 +2120,15 @@ function App() {
           </>
         )}
       </main>
-      {showLoginModal && (
-        <LoginModal
-          onLogin={handleLogin}
-          onClose={() => { if (!loginLimitReached) setShowLoginModal(false); }}
-          limitReached={loginLimitReached}
-          messagesLimit={guestMessagesLimit}
+      {showAuthModal && (
+        <AuthModal
+          onSignedIn={handleSignedIn}
+          onClose={() => setShowAuthModal(false)}
+          initialNotice={authNotice}
         />
+      )}
+      {showAdmin && authUser?.role === "owner" && (
+        <AdminPanel onClose={() => setShowAdmin(false)} />
       )}
     </div>
   );

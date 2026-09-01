@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   buildEnvRuntimeConfig,
+  loadAuthConfig,
   parseDotEnv,
   parseRuntimeConfig,
 } from "../src/config.js";
@@ -105,4 +106,68 @@ MALFORMED_LINE
       DEFAULT_PROVIDER: "nvidia",
     }
   );
+});
+
+
+const VALID_AUTH_ENV = {
+  NODE_ENV: "production",
+  PUBLIC_ORIGIN: "https://chat.philippeho.dev",
+  SESSION_SECRET: "0".repeat(64),
+  OWNER_EMAIL: "phil@example.com",
+  OWNER_PASSWORD: "a-long-enough-password",
+};
+
+test("loadAuthConfig accepts a complete environment and applies defaults", () => {
+  const config = loadAuthConfig(VALID_AUTH_ENV);
+
+  assert.equal(config.publicOrigin, "https://chat.philippeho.dev");
+  assert.equal(config.isProduction, true);
+  assert.equal(config.ownerUsername, "phil");
+  assert.equal(config.databasePath, "/data/philchat.sqlite");
+  assert.equal(config.guestMessageLimit, 5);
+  assert.equal(config.guestDailyMessageLimit, 50);
+  assert.deepEqual(config.guestModelAllowlist, []);
+  assert.equal(config.defaultMonthlyTokenBudget, 500_000);
+  assert.equal(config.globalDailyTokenLimit, 2_000_000);
+});
+
+test("loadAuthConfig throws when SESSION_SECRET is missing or too short", () => {
+  assert.throws(
+    () => loadAuthConfig({ ...VALID_AUTH_ENV, SESSION_SECRET: undefined }),
+    /SESSION_SECRET/
+  );
+  assert.throws(
+    () => loadAuthConfig({ ...VALID_AUTH_ENV, SESSION_SECRET: "short" }),
+    /SESSION_SECRET/
+  );
+});
+
+test("loadAuthConfig rejects a PUBLIC_ORIGIN that carries a path", () => {
+  assert.throws(
+    () =>
+      loadAuthConfig({
+        ...VALID_AUTH_ENV,
+        PUBLIC_ORIGIN: "https://philippeho.dev/philchat",
+      }),
+    /PUBLIC_ORIGIN/
+  );
+});
+
+test("loadAuthConfig enforces the 12-character owner password floor", () => {
+  assert.throws(
+    () => loadAuthConfig({ ...VALID_AUTH_ENV, OWNER_PASSWORD: "tooshort" }),
+    /OWNER_PASSWORD/
+  );
+});
+
+test("loadAuthConfig parses the guest model allowlist into a trimmed array", () => {
+  const config = loadAuthConfig({
+    ...VALID_AUTH_ENV,
+    GUEST_MODEL_ALLOWLIST: " gemini-2.5-flash , meta/llama-3.1-8b-instruct ",
+  });
+
+  assert.deepEqual(config.guestModelAllowlist, [
+    "gemini-2.5-flash",
+    "meta/llama-3.1-8b-instruct",
+  ]);
 });
