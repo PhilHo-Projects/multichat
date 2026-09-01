@@ -1,15 +1,14 @@
 services:
   philchat:
     build:
-      context: /opt/philchat
+      context: .
     container_name: philchat
     env_file:
-      - /opt/philchat/.env
+      - .env
     environment:
       NODE_ENV: production
       PORT: "8791"
       HOST: 0.0.0.0
-      APP_BASE_PATH: /philchat
     restart: unless-stopped
     networks:
       - coolify
