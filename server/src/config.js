@@ -332,3 +332,86 @@ function readNumberEnv(name, fallbackValue, env = process.env) {
 
   return parsedValue;
 }
+
+export const DEFAULT_DATABASE_PATH = "/data/philchat.sqlite";
+export const SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
+
+function requireEnvString(env, name, { minLength = 1 } = {}) {
+  const value = String(env[name] ?? "").trim();
+
+  if (value.length < minLength) {
+    throw new AppError(
+      `${name} must be set to at least ${minLength} character(s). Refusing to start - ` +
+        "an app running on a missing or default secret fails silently; this fails loudly.",
+      { httpCode: 500 }
+    );
+  }
+
+  return value;
+}
+
+function optionalEnvNumber(env, name, fallback) {
+  const raw = String(env[name] ?? "").trim();
+  if (!raw) return fallback;
+
+  const parsedValue = Number(raw);
+  if (!Number.isInteger(parsedValue) || parsedValue <= 0) {
+    throw new AppError(`${name} must be a positive integer.`, { httpCode: 500 });
+  }
+
+  return parsedValue;
+}
+
+/**
+ * Boot-time configuration for auth, guests and budgets.
+ *
+ * Every required value throws rather than falling back. The audit's standing finding is
+ * that insecure defaults survive for weeks precisely because nothing forces the issue.
+ */
+export function loadAuthConfig(env = process.env) {
+  const environment = String(env.NODE_ENV ?? "development").trim() || "development";
+  const publicOriginRaw = requireEnvString(env, "PUBLIC_ORIGIN");
+
+  let publicOrigin;
+  try {
+    const parsedUrl = new URL(publicOriginRaw);
+    if (parsedUrl.pathname !== "/") {
+      throw new Error("PUBLIC_ORIGIN must not carry a path");
+    }
+    publicOrigin = parsedUrl.origin;
+  } catch {
+    throw new AppError(
+      "PUBLIC_ORIGIN must be an absolute URL with no path, e.g. https://chat.philippeho.dev",
+      { httpCode: 500 }
+    );
+  }
+
+  const guestModelAllowlist = String(env.GUEST_MODEL_ALLOWLIST ?? "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  return {
+    environment,
+    isProduction: environment === "production",
+    publicOrigin,
+    sessionSecret: requireEnvString(env, "SESSION_SECRET", { minLength: 32 }),
+    ownerUsername: String(env.OWNER_USERNAME ?? "").trim() || "phil",
+    ownerEmail: requireEnvString(env, "OWNER_EMAIL"),
+    // Bootstrap only: used on the first boot that finds no owner row, ignored for ever
+    // after. The 12-character floor matches the sign-up minimum - the owner must not be
+    // the weakest account on the site.
+    ownerPassword: requireEnvString(env, "OWNER_PASSWORD", { minLength: 12 }),
+    databasePath: String(env.PHILCHAT_DB_PATH ?? "").trim() || DEFAULT_DATABASE_PATH,
+    sessionMaxAgeSeconds: SESSION_MAX_AGE_SECONDS,
+    guestMessageLimit: optionalEnvNumber(env, "GUEST_MESSAGE_LIMIT", 5),
+    guestDailyMessageLimit: optionalEnvNumber(env, "GUEST_DAILY_MESSAGE_LIMIT", 50),
+    guestModelAllowlist,
+    defaultMonthlyTokenBudget: optionalEnvNumber(
+      env,
+      "DEFAULT_MONTHLY_TOKEN_BUDGET",
+      500_000
+    ),
+    globalDailyTokenLimit: optionalEnvNumber(env, "GLOBAL_DAILY_TOKEN_LIMIT", 2_000_000),
+  };
+}
