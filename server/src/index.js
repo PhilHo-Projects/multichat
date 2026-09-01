@@ -7,6 +7,11 @@ import { fileURLToPath } from "node:url";
 import { registerAdminRoutes } from "./admin.js";
 import { buildAuth } from "./auth.js";
 import {
+  checkBudget,
+  recordUsage,
+  summarizeUserBudget,
+} from "./budget.js";
+import {
   AppError,
   buildBootstrapPayload,
   loadAuthConfig,
@@ -140,6 +145,7 @@ export function createApp({ database, auth, config }) {
           username: request.authUser.username,
           role: request.authUser.role,
         },
+        usage: summarizeUserBudget({ database, config, user: request.authUser }),
         ...(pendingUserCount === undefined ? {} : { pendingUserCount }),
       });
       return;
@@ -303,6 +309,27 @@ export function createApp({ database, auth, config }) {
       }
     }
 
+    if (request.authUser) {
+      const budget = checkBudget({ database, config, user: request.authUser });
+
+      if (!budget.ok) {
+        beginSseResponse(response);
+        sendSseEvent(response, "error", {
+          httpCode: 429,
+          googleStatus: null,
+          message:
+            budget.scope === "user"
+              ? "You've used your token budget for this month. Ask Phil to raise it."
+              : "The site has hit its daily token ceiling. Try again tomorrow.",
+          modelId: request.body?.modelId ?? null,
+          provider: null,
+          details: { budgetExhausted: true, scope: budget.scope },
+        });
+        response.end();
+        return;
+      }
+    }
+
     const upstreamAbortController = new AbortController();
     request.on("aborted", () => {
       upstreamAbortController.abort();
@@ -312,6 +339,7 @@ export function createApp({ database, auth, config }) {
 
     let finalUsage = null;
     let aggregatedParts = [];
+    let resolvedProvider = null;
 
     try {
       const runtimeConfig = await loadRuntimeConfig();
@@ -323,6 +351,8 @@ export function createApp({ database, auth, config }) {
         messages: request.body?.messages,
         signal: upstreamAbortController.signal,
       });
+
+      resolvedProvider = provider;
 
       sendSseEvent(response, "start", {
         modelId: request.body.modelId,
@@ -381,6 +411,14 @@ export function createApp({ database, auth, config }) {
 
       sendSseEvent(response, "error", normalizedError);
     } finally {
+      recordUsage({
+        database,
+        usage: finalUsage,
+        user: request.authUser,
+        guest,
+        provider: resolvedProvider,
+        modelId: request.body?.modelId,
+      });
       response.end();
     }
   });
