@@ -9,7 +9,8 @@
     "test": "node --test --disable-warning=ExperimentalWarning"
   },
   "dependencies": {
-    "bcryptjs": "^3.0.3",
+    "better-auth": "^1.7.2",
+    "cookie-parser": "^1.4.7",
     "express": "^5.1.0",
     "express-session": "^1.19.0",
     "google-auth-library": "^10.4.1"
