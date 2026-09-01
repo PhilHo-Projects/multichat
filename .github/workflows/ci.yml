@@ -1,0 +1,47 @@
+name: CI
+
+# Deployment is Coolify's job: it pulls this repo and builds the Dockerfile itself, so
+# nothing here needs SSH access to the server. This workflow only proves the branch is
+# good before you release it.
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            server/package-lock.json
+            webui/package-lock.json
+
+      - name: Install server dependencies
+        run: npm ci --prefix server
+
+      - name: Install web UI dependencies
+        run: npm ci --prefix webui
+
+      - name: Run tests
+        run: npm test
+
+      - name: Lint web UI
+        run: npm run lint
+
+      - name: Build the production image
+        run: docker build -t philchat:ci .
