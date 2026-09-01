@@ -7,7 +7,6 @@ import {
   AppError,
   buildBootstrapPayload,
   loadRuntimeConfig,
-  normalizeAppBasePath,
 } from "./config.js";
 import {
   fetchProviderModels,
@@ -32,7 +31,6 @@ const __dirname = path.dirname(__filename);
 const WEBUI_DIST_PATH = path.resolve(__dirname, "../../webui/dist");
 const HOST = process.env.HOST || "127.0.0.1";
 const PORT = Number(process.env.PORT || 8787);
-const APP_BASE_PATH = normalizeAppBasePath(process.env.APP_BASE_PATH);
 
 const app = express();
 const router = express.Router();
@@ -352,19 +350,7 @@ router.get("/{*splat}", (_request, response) => {
   });
 });
 
-if (APP_BASE_PATH) {
-  app.use((request, response, next) => {
-    if (request.path === APP_BASE_PATH) {
-      response.redirect(301, `${APP_BASE_PATH}/`);
-      return;
-    }
-
-    next();
-  });
-  app.use(APP_BASE_PATH, router);
-} else {
-  app.use(router);
-}
+app.use(router);
 
 app.use((error, _request, response, _next) => {
   const normalizedError = toClientError(error);
@@ -372,9 +358,7 @@ app.use((error, _request, response, _next) => {
 });
 
 app.listen(PORT, HOST, () => {
-  console.log(
-    `Multichat server listening on http://${HOST}:${PORT}${APP_BASE_PATH || ""}`
-  );
+  console.log(`philchat server listening on http://${HOST}:${PORT}`);
 });
 
 function mergeParts(existingParts, incomingParts) {

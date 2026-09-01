@@ -45,8 +45,6 @@ jobs:
 
       - name: Build web UI
         run: npm run build
-        env:
-          VITE_BASE_PATH: /philchat/
 
       - name: Load SSH key
         uses: webfactory/ssh-agent@v0.9.0
@@ -80,6 +78,9 @@ jobs:
             sudo cp '$DEPLOY_PATH'server/package.json /opt/philchat/server/
             sudo cp '$DEPLOY_PATH'server/package-lock.json /opt/philchat/server/
             sudo cp -r '$DEPLOY_PATH'webui/dist/* /opt/philchat/webui/dist/
+            sudo cp '$DEPLOY_PATH'Dockerfile /opt/philchat/Dockerfile
+            sudo cp '$DEPLOY_PATH'docker-compose.yml /opt/philchat/docker-compose.yml
+            sudo cp '$DEPLOY_PATH'.dockerignore /opt/philchat/.dockerignore
             cd /opt/philchat
             sudo docker build -t philchat-philchat .
             sudo docker compose down && sudo docker compose up -d

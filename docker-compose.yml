@@ -1,0 +1,17 @@
+services:
+  philchat:
+    build:
+      context: .
+    container_name: philchat
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: "8791"
+      HOST: 0.0.0.0
+    restart: unless-stopped
+    networks:
+      - coolify
+networks:
+  coolify:
+    external: true

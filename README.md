@@ -38,14 +38,6 @@ npm run build
 
 The Node server serves `webui/dist` automatically.
 
-For the AWS path deploy:
-
-```powershell
-$env:VITE_BASE_PATH = "/philchat/"
-npm run build
-Remove-Item Env:VITE_BASE_PATH
-```
-
 ## Notes
 
 - The browser never receives the raw Google API key.

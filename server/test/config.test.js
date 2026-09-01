@@ -5,7 +5,6 @@ import {
   buildEnvRuntimeConfig,
   parseDotEnv,
   parseRuntimeConfig,
-  normalizeAppBasePath,
 } from "../src/config.js";
 
 test("parseRuntimeConfig preserves legacy Google config and defaults to Google", () => {
@@ -106,12 +105,4 @@ MALFORMED_LINE
       DEFAULT_PROVIDER: "nvidia",
     }
   );
-});
-
-test("normalizeAppBasePath returns a root or slash-wrapped mount path", () => {
-  assert.equal(normalizeAppBasePath(""), "");
-  assert.equal(normalizeAppBasePath("/"), "");
-  assert.equal(normalizeAppBasePath("philchat"), "/philchat");
-  assert.equal(normalizeAppBasePath("/philchat/"), "/philchat");
-  assert.equal(normalizeAppBasePath(" /nested/path/ "), "/nested/path");
 });
