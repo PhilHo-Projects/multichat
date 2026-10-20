@@ -1,6 +1,6 @@
 # Build the web UI. Coolify clones the repo and builds from here, and webui/dist is
 # gitignored, so the image has to produce it rather than expect it in the context.
-FROM node:24-alpine AS webui
+FROM node:24.22.0-alpine AS webui
 WORKDIR /app/webui
 COPY webui/package.json webui/package-lock.json ./
 # --include=dev explicitly: the build platform injects NODE_ENV=production as a build
@@ -9,7 +9,7 @@ RUN npm ci --include=dev
 COPY webui/ ./
 RUN npm run build
 
-FROM node:24-alpine
+FROM node:24.22.0-alpine
 WORKDIR /app
 
 COPY server/package.json server/package-lock.json ./server/
