@@ -31,14 +31,41 @@ test("openDatabase creates every table the app needs", () => {
   database.close();
 });
 
-test("the account table carries the issuer column Better Auth 1.7 requires", () => {
+test("the account table has no issuer column, which Better Auth 1.7.3+ never writes", () => {
   const database = openDatabase(":memory:");
   const columns = database.connection
     .prepare(`SELECT name FROM pragma_table_info('account')`)
     .all()
     .map((row) => row.name);
 
-  assert.ok(columns.includes("issuer"));
+  assert.ok(!columns.includes("issuer"));
+  database.close();
+});
+
+test("migration 3 keeps existing accounts when it drops issuer", () => {
+  const database = openDatabase(":memory:");
+  // Put the database back in its version 2 shape: issuer present and indexed.
+  database.connection.exec(`
+    ALTER TABLE "account" ADD COLUMN "issuer" text;
+    CREATE UNIQUE INDEX "account_issuer_accountId_uidx" ON "account" ("issuer", "accountId");
+    DELETE FROM schema_migrations WHERE version = 3;
+    INSERT INTO "user" ("id", "name", "email", "emailVerified", "createdAt", "updatedAt", "role", "approvalStatus")
+      VALUES ('user-1', 'Phil', 'phil@example.test', 1, '2026-08-17', '2026-08-17', 'owner', 'approved');
+    INSERT INTO "account" ("id", "issuer", "accountId", "providerId", "userId", "password", "createdAt", "updatedAt")
+      VALUES ('account-1', 'local:credential', 'user-1', 'credential', 'user-1', 'hash', '2026-08-17', '2026-08-17');
+  `);
+
+  database.migrate();
+
+  const columns = database.connection
+    .prepare(`SELECT name FROM pragma_table_info('account')`)
+    .all()
+    .map((row) => row.name);
+  assert.ok(!columns.includes("issuer"));
+  assert.deepEqual(
+    { ...database.connection.prepare(`SELECT "providerId", "password" FROM "account" WHERE "id" = ?`).get("account-1") },
+    { providerId: "credential", password: "hash" },
+  );
   database.close();
 });
 
@@ -58,7 +85,7 @@ test("migrations are recorded once and re-running them is a no-op", () => {
     .map((row) => row.version);
 
   assert.deepEqual(after, before);
-  assert.deepEqual(before, [1, 2]);
+  assert.deepEqual(before, [1, 2, 3]);
   database.close();
 });
 
