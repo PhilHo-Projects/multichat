@@ -11,7 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "better-auth": "1.7.2",
+    "better-auth": "1.7.28",
     "dompurify": "^3.4.17",
     "marked": "^15.0.4",
     "react": "19.3.1",

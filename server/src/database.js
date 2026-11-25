@@ -7,9 +7,9 @@ import { DatabaseSync } from "node:sqlite";
  * while ours are snake_case; both are correct. `user` is a SQL reserved word, so it must
  * stay quoted everywhere it appears.
  *
- * The `issuer` column on `account` is not optional. Better Auth 1.7 writes to it, and
- * hand-written DDL that omits it fails at the first sign-up with
- * "table account has no column named issuer".
+ * Migration 1 is Better Auth 1.7.2's schema, which carried a required `account.issuer`.
+ * Migration 3 drops it: 1.7.3+ never writes that column and refuses to start while it is
+ * NOT NULL.
  */
 const MIGRATIONS = [
   {
@@ -116,6 +116,20 @@ const MIGRATIONS = [
         guest_messages INTEGER NOT NULL DEFAULT 0,
         tokens         INTEGER NOT NULL DEFAULT 0
       );
+    `,
+  },
+  {
+    // Better Auth 1.7.3+ identifies accounts by (providerId, accountId) again. Drop the
+    // index first: SQLite will not drop a column an index still covers.
+    //
+    // No duplicate check is needed: every account 1.7.2 wrote is local, with
+    // issuer = 'local:' || providerId, so the old unique (issuer, accountId) index already
+    // kept (providerId, accountId) unique. server/scripts/undo-auth-migration-3.sql
+    // restores the column exactly for a rollback to 1.7.2.
+    version: 3,
+    sql: `
+      DROP INDEX IF EXISTS "account_issuer_accountId_uidx";
+      ALTER TABLE "account" DROP COLUMN "issuer";
     `,
   },
 ];
